@@ -4,4 +4,6 @@
 **/typechain-types
 **/.env
 **/*.log
+**/.DS_Store
 .chrome
+.buffer

@@ -5,7 +5,11 @@
  * Feature flag (query): `?showHardhatNetwork=1` (ou `true` / `yes`) exibe a seção do botão
  * “Adicionar ou mudar para Hardhat local” (EIP-3326 / EIP-3085). Sem o parâmetro, fica oculta.
  */
-const CONTRACT_ADDRESS = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512';
+
+// require('dotenv').config();
+// dotenv.config();
+
+const CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 
 /** Deve coincidir com hardhat.config.js → networks.localhost.chainId */
 const HARDHAT_LOCAL_CHAIN_ID = 31337;
@@ -99,6 +103,16 @@ function setWalletUi(text) {
 
 function setGetMessageEnabled(on) {
   document.getElementById('btn-message').disabled = !on;
+}
+
+function setStorageActionsEnabled(on) {
+  document.getElementById('input-stored-data').disabled = !on;
+  document.getElementById('btn-set-data').disabled = !on;
+  document.getElementById('btn-get-data').disabled = !on;
+}
+
+function setStoredDataUi(text) {
+  document.getElementById('stored-data').innerText = text;
 }
 
 /** Mensagem para o aluno/usuário (códigos EIP-1193 / MetaMask). */
@@ -255,6 +269,7 @@ async function connectWallet() {
 
     if (CONTRACT_ADDRESS === 'SEU_ENDERECO_AQUI' || !ethers.utils.isAddress(CONTRACT_ADDRESS)) {
       setGetMessageEnabled(false);
+      setStorageActionsEnabled(false);
       setMessageUi('Defina CONTRACT_ADDRESS em app.js após o deploy.');
       alert('Configure CONTRACT_ADDRESS em frontend/app.js com o endereço do contrato deployado.');
       return;
@@ -265,6 +280,7 @@ async function connectWallet() {
     const bytecode = await provider.getCode(CONTRACT_ADDRESS);
     if (!bytecode || bytecode === '0x') {
       setGetMessageEnabled(false);
+      setStorageActionsEnabled(false);
       const wrongChain = chainIdNum !== HARDHAT_LOCAL_CHAIN_ID;
       setMessageUi(
         wrongChain
@@ -277,7 +293,9 @@ async function connectWallet() {
     }
 
     setGetMessageEnabled(true);
+    setStorageActionsEnabled(true);
     setMessageUi('');
+    setStoredDataUi('');
   } catch (err) {
     console.error(err);
     const label = friendlyWalletError(err);
@@ -303,9 +321,62 @@ async function getMessage() {
   }
 }
 
+async function setStoredData() {
+  if (!contract) {
+    alert('Conecte a carteira primeiro!');
+    return;
+  }
+
+  const inputEl = document.getElementById('input-stored-data');
+  const rawValue = inputEl.value.trim();
+  if (rawValue === '') {
+    alert('Informe um valor inteiro para chamar set(uint).');
+    return;
+  }
+
+  if (!/^\d+$/.test(rawValue)) {
+    alert('Use apenas inteiros não negativos.');
+    return;
+  }
+
+  try {
+    const tx = await contract.set(rawValue);
+    setStoredDataUi(`Transação enviada: ${tx.hash}\nAguardando confirmação...`);
+    await tx.wait();
+    const currentValue = await contract.get();
+    setStoredDataUi(`Valor atualizado no contrato: ${currentValue.toString()}`);
+  } catch (err) {
+    console.error(err);
+    const label = friendlyCallError(err);
+    setStoredDataUi(label.split('\n\n')[0]);
+    alert(label);
+  }
+}
+
+async function getStoredData() {
+  if (!contract) {
+    alert('Conecte a carteira primeiro!');
+    return;
+  }
+
+  try {
+    const value = await contract.get();
+    setStoredDataUi(`Valor atual (teste): ${value.toString()}`);
+  } catch (err) {
+    console.error(err);
+    const label = friendlyCallError(err);
+    setStoredDataUi(label.split('\n\n')[0]);
+    alert(label);
+  }
+}
+
 document.getElementById('btn-connect').addEventListener('click', connectWallet);
 document.getElementById('btn-add-network').addEventListener('click', addHardhatNetworkViaSite);
 document.getElementById('btn-message').addEventListener('click', getMessage);
+document.getElementById('btn-set-data').addEventListener('click', setStoredData);
+document.getElementById('btn-get-data').addEventListener('click', getStoredData);
+
+setStorageActionsEnabled(false);
 
 if (isQueryFlagEnabled('showHardhatNetwork')) {
   document.getElementById('section-site-network')?.removeAttribute('hidden');

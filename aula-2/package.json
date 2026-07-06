@@ -1,0 +1,28 @@
+{
+  "name": "aula-2-ether-transfer-web3",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aula 2 Ether Transfer Web3 — Hardhat + Smart Contract + Frontend + MetaMask (aula didática)",
+  "scripts": {
+    "chain": "node scripts/chain.js",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "admin": "hardhat run scripts/admin-cli.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "compile": "hardhat compile",
+    "clean": "hardhat clean",
+    "test": "hardhat test",
+    "generate-config": "node scripts/generate-frontend-config.js",
+    "frontend": "npm run generate-config && node frontend.js",
+    "frontend:dev": "npm run generate-config && browser-sync start --serveStatic frontend --port 3000 --watch --files frontend --files .env --open false"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "browser-sync": "^3.0.4",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "inquirer": "^8.2.6"
+  }
+}

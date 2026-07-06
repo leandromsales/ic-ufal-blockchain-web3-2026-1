@@ -1,12 +1,64 @@
-# Aula 2 — Ether Transfer Web3
+# Aula 3 — Ether Transfer Web3 + Token
 
-Hardhat + smart contract `EtherTransfer` + `TransferProxy` + frontend MetaMask/ethers.js v5.
+Hardhat + smart contract `EtherTransfer` + `TransferProxy` + **`SimpleToken` (AULA)** + frontend MetaMask/ethers.js v5.
 
 **Autor:** Leandro Melo de Sales — [leandro@ic.ufal.br](mailto:leandro@ic.ufal.br)
 
 **Licença:** [MIT](LICENSE.md)
 
-> **Aula 3:** extensão com **token ERC-20 próprio** (`SimpleToken`), transferência ETH ou token no frontend e admin para `mint` / cotação. Veja `../aula-3/`.
+Este repositório é **auto-contido**: inclui transferência de ETH com taxa, logs, proxy, abas Admin/MetaMask, testes automatizados **e** um token ERC-20 próprio (`SimpleToken`) com distribuição via `mint`, transferência no frontend e administração on-chain. Evolução didática da [aula-2](../aula-2/README.md) (mesma base + token).
+
+---
+
+## Visão geral
+
+### Objetivo didático
+
+| Conceito | Onde aparece neste projeto |
+| -------- | -------------------------- |
+| Transferência nativa com taxa on-chain | `EtherTransfer.transferEther` |
+| Contrato intermediário (`msg.sender` ≠ `tx.origin`) | `TransferProxy` |
+| Token fungível (ERC-20 simplificado) | `SimpleToken` |
+| Supply controlado pelo emissor | `mint` / `burnFrom` (owner) |
+| Distribuição inicial zero | constructor do token sem `mint` automático |
+| Dois ativos no mesmo dapp | seletor **ETH / AULA** no frontend |
+| Cotação simbólica (não é DEX) | `weiPerToken`, `ethValueOf`, pré-visualização na UI |
+| Testes automatizados | `npm test` (Hardhat + Chai) |
+
+### Arquitetura
+
+```mermaid
+flowchart TB
+  subgraph deploy["npm run deploy:local"]
+    ET[EtherTransfer]
+    TP[TransferProxy]
+    ST[SimpleToken AULA]
+  end
+
+  subgraph frontend["Frontend MetaMask :3000"]
+    FORM[Formulário Transferir]
+    FORM -->|ETH + msg.value| ET
+    FORM -->|AULA transfer| ST
+    FORM -->|via proxy| TP --> ET
+    ADMIN[Admin UI]
+    ADMIN --> ET
+    ADMIN --> ST
+  end
+
+  subgraph cli["npm run admin"]
+    CLI[admin-cli.js]
+    CLI --> ET
+    CLI --> ST
+  end
+```
+
+| Contrato | Arquivo | Papel |
+| -------- | ------- | ----- |
+| `EtherTransfer` | `contracts/EtherTransfer.sol` | Transferência de **ETH** com taxa 5%, histórico `transfersByOrigin`, admin on-chain |
+| `TransferProxy` | `contracts/TransferProxy.sol` | Contrato intermediário que chama `transferEther` — demo `msg.sender` vs `tx.origin` |
+| `SimpleToken` | `contracts/SimpleToken.sol` | Token **AULA** (ERC-20 didático), supply inicial **zero**, distribuição via `mint` |
+
+---
 
 ## Funcionalidades
 
@@ -23,6 +75,87 @@ contract.transferEther(to, { value: ethers.utils.parseEther(amountEth) });
 ```
 
 A MetaMask assina a transação; o valor digitado é o **total enviado** (`msg.value`), não o líquido. Após a confirmação, o app atualiza saldos e exibe o hash da transação com link para o block explorer (configurado no `.env` → `frontend/config.js`).
+
+### Transferência com token (`SimpleToken` / AULA)
+
+Além de ETH, o frontend permite transferir o token **`SimpleToken`** (símbolo **AULA**, 18 decimais). O contrato implementa um ERC-20 simplificado em `contracts/SimpleToken.sol`.
+
+| Aspecto | ETH (`EtherTransfer`) | Token (`SimpleToken`) |
+| ------- | --------------------- | --------------------- |
+| Função | `transferEther` (payable) | `transfer(to, amount)` |
+| Taxa on-chain | 5% retida no contrato | **Nenhuma** (só gas em ETH) |
+| Supply inicial | N/A (ETH nativo) | **Zero** — ninguém recebe tokens no deploy |
+| Distribuição | Usuário envia ETH da carteira | Owner **`mint`** via Admin ou CLI |
+| Histórico na aba Logs | `TransferExecuted` | Não integrado (evento `Transfer` ERC-20) |
+
+No formulário da aba **Transferir**, o usuário escolhe **Ethereum (ETH)** ou **Token (AULA)**. Em modo token, o app chama:
+
+```javascript
+tokenContract.transfer(to, ethers.utils.parseEther(amountTokens));
+```
+
+A cotação **`weiPerToken`** (quantos wei de ETH valem 1 token inteiro) é **referência para a UI** — pré-visualização e tooltip —, não um swap automático on-chain. Valor inicial no deploy: **1 AULA = 0,001 ETH** (`1e15` wei). O owner altera com `setEthRate`.
+
+> **Importante:** após o deploy, **nenhuma carteira tem AULA** até o owner executar `mint`. Use a aba **Admin → SimpleToken** ou `npm run admin` para distribuir tokens antes de testar transferências.
+
+### Contrato `SimpleToken` — referência completa
+
+Implementação **didática** de ERC-20 (sem OpenZeppelin): `transfer`, `approve`, `transferFrom` e funções admin no mesmo arquivo.
+
+#### Parâmetros fixos no deploy
+
+| Campo | Valor |
+| ----- | ----- |
+| Nome | Aula Token |
+| Símbolo | AULA |
+| Decimais | 18 |
+| Supply inicial | **0** |
+| `weiPerToken` inicial | `1e15` wei → **1 AULA = 0,001 ETH** |
+| Owner | quem executa `npm run deploy:local` (conta #0 do Hardhat, por padrão) |
+
+#### Estado on-chain
+
+| Variável | Descrição |
+| -------- | --------- |
+| `totalSupply` | Tokens em circulação |
+| `balanceOf[addr]` | Saldo por carteira |
+| `allowance[owner][spender]` | Aprovação para `transferFrom` |
+| `weiPerToken` | Wei de ETH equivalentes a **1 token inteiro** (10¹⁸ unidades) |
+
+#### Funções públicas (qualquer usuário)
+
+| Função | Efeito |
+| ------ | ------ |
+| `transfer(to, amount)` | Move tokens do `msg.sender` para `to` |
+| `approve(spender, amount)` | Define allowance |
+| `transferFrom(from, to, amount)` | Move tokens com allowance |
+| `burn(amount)` | Titular queima os próprios tokens |
+| `ethValueOf(tokenAmount)` | View: converte quantidade de tokens em wei ETH pela cotação |
+
+#### Funções administrativas (`onlyOwner`)
+
+| Função | Efeito |
+| ------ | ------ |
+| `mint(to, amount)` | Cria tokens; emite `Mint` + `Transfer(0x0, to, amount)` |
+| `burnFrom(from, amount)` | Queima tokens de `from`; reduz `totalSupply` |
+| `setEthRate(newWeiPerToken)` | Atualiza cotação; emite `EthRateUpdated` |
+| `transferOwnership(newOwner)` | Transfere owner do token |
+
+#### Eventos
+
+`Transfer`, `Approval`, `Mint`, `Burn`, `EthRateUpdated`, `OwnershipTransferred`.
+
+> **Cotação:** `setEthRate` **não** converte ETH em AULA automaticamente. Serve para a UI exibir equivalente em ETH na pré-visualização e no tooltip do saldo.
+
+### TransferProxy (`contracts/TransferProxy.sol`)
+
+Contrato fino que recebe ETH via `proxyTransfer(to)` e chama `etherTransfer.transferEther{value}(to)` internamente.
+
+- **`msg.sender`** visto pelo `EtherTransfer` = endereço do **proxy**
+- **`tx.origin`** = carteira do usuário que assinou na MetaMask
+- O histórico `transfersByOrigin` e o evento `TransferExecuted` usam **`tx.origin`** — a transferência via proxy continua na aba **Minhas transferências** do usuário
+
+No frontend, o botão **Transferir via proxy** só aparece no modo **Ethereum (ETH)**.
 
 ### Captura de eventos de log (`TransferExecuted`)
 
@@ -111,9 +244,24 @@ modifier onlyOwner() {
 
 Estado público consultável: `owner`, `enabled`, `maxRecordsPerWallet`.
 
+#### SimpleToken — funções administrativas (`onlyOwner`)
+
+Contrato separado (`TOKEN_ADDRESS` no `.env`). O **owner** do token é quem faz o deploy (mesma conta #0 do Hardhat, por padrão).
+
+| Função | Descrição |
+| ------ | --------- |
+| **`mint(to, amount)`** | Cria tokens e credita `to`; aumenta `totalSupply`. Emite `Mint` e `Transfer(address(0), to, amount)`. **Principal forma de distribuir** após o deploy. |
+| **`burnFrom(from, amount)`** | Queima tokens de qualquer carteira; reduz `totalSupply`. |
+| **`setEthRate(newWeiPerToken)`** | Atualiza cotação 1 AULA → X ETH. Emite `EthRateUpdated`. |
+| **`transferOwnership(newOwner)`** | Transfere ownership do token. |
+
+Funções públicas do titular: `transfer`, `approve`, `transferFrom`, `burn` (queima própria). View: `balanceOf`, `totalSupply`, `weiPerToken`, `ethValueOf(tokenAmount)`.
+
+Eventos: `Transfer`, `Approval`, `Mint`, `Burn`, `EthRateUpdated`, `OwnershipTransferred`.
+
 #### CLI administrativo (`npm run admin`)
 
-Programa interativo em `scripts/admin-cli.js` para executar as operações acima sem Hardhat console. Lê **`CONTRACT_ADDRESS`** do `.env`; assina com a **conta #0 do `hardhat node`** ( **`PRIVATE_KEY` opcional** — só se quiser outra carteira ou Sepolia).
+Programa interativo em `scripts/admin-cli.js` para executar operações do **EtherTransfer** e do **SimpleToken** sem Hardhat console. Lê **`CONTRACT_ADDRESS`** e **`TOKEN_ADDRESS`** do `.env`; assina com a **conta #0 do `hardhat node`** (**`PRIVATE_KEY` opcional** — só se quiser outra carteira ou Sepolia).
 
 O menu usa **[inquirer](https://www.npmjs.com/package/inquirer)** (`type: 'list'`): navegue com **↑ / ↓** e confirme com **Enter** — mesmo padrão do projeto api-tester.
 
@@ -123,9 +271,21 @@ O menu usa **[inquirer](https://www.npmjs.com/package/inquirer)** (`type: 'list'
 npm run admin
 ```
 
-Opções: status, `setEnabled`, `clearTransfersByOrigin`, `pruneTransfersByOrigin`, `clearAllTransfers`, sair.
+Opções **EtherTransfer:** status (ETH + token), `setEnabled`, `clearTransfersByOrigin`, `pruneTransfersByOrigin`, `clearAllTransfers`.
 
-**Exemplo no Hardhat console** (conta #0 = deployer = owner):
+Opções **SimpleToken:** `mint`, `burnFrom`, `setEthRate`, `tokenStatus` (supply, cotação, saldo de carteira).
+
+| Menu CLI | Contrato | Ação |
+| -------- | -------- | ---- |
+| Status | Ambos | Owner, saldo ETH do contrato, supply AULA, cotação |
+| setEnabled | EtherTransfer | Suspende/reativa `transferEther` |
+| clear / prune / clearAll | EtherTransfer | Limpeza de `transfersByOrigin` |
+| mint | SimpleToken | Distribui tokens para uma carteira |
+| burnFrom | SimpleToken | Queima tokens de uma carteira |
+| setEthRate | SimpleToken | Define 1 AULA = X ETH |
+| tokenStatus | SimpleToken | Consulta supply, cotação e `balanceOf` |
+
+**Exemplo no Hardhat console — EtherTransfer** (conta #0 = deployer = owner):
 
 ```javascript
 const c = await ethers.getContractAt('EtherTransfer', '0x...');
@@ -134,6 +294,17 @@ await c.setEnabled(true);                     // reativa
 await c.clearTransfersByOrigin('0xAbc...');   // zera histórico da carteira
 await c.pruneTransfersByOrigin('0xAbc...', 10); // mantém só os 10 últimos
 await c.clearAllTransfers();                  // zera todo o storage de histórico
+```
+
+**Exemplo no Hardhat console — SimpleToken** (distribuir tokens):
+
+```javascript
+const tokenAddr = '0x...'; // TOKEN_ADDRESS do .env
+const token = await ethers.getContractAt('SimpleToken', tokenAddr);
+const [, alice] = await ethers.getSigners();
+await token.mint(alice.address, ethers.parseEther('100')); // 100 AULA
+await token.balanceOf(alice.address);
+await token.setEthRate(ethers.parseEther('0.002')); // 1 AULA = 0,002 ETH
 ```
 
 Para o dia a dia, prefira **`npm run admin`** (menu interativo com a mesma conta do `.env`).
@@ -225,23 +396,82 @@ Use **`PRIVATE_KEY` manual no `.env` apenas se** quiser outra carteira que nao a
 
 Após redeploy ou troca de carteira, rode **`npm run deploy:local` de novo** e confira no admin: **“Voce e o owner? sim”**.
 
-O deploy local também publica **`TransferProxy`** e grava `PROXY_ADDRESS` no `.env` / `frontend/config.js`.
+O deploy local publica **`TransferProxy`** e **`SimpleToken`**, gravando `PROXY_ADDRESS` e **`TOKEN_ADDRESS`** no `.env` / `frontend/config.js`.
+
+```mermaid
+flowchart LR
+  deploy["npm run deploy:local"]
+  deploy --> ET[EtherTransfer]
+  deploy --> TP[TransferProxy]
+  deploy --> ST[SimpleToken AULA]
+```
+
+### Deploy (`scripts/deploy.js`)
+
+Ordem de implantação na rede local (ou Sepolia):
+
+1. `EtherTransfer.deploy()` → grava `CONTRACT_ADDRESS`
+2. `TransferProxy.deploy(etherTransferAddress)` → grava `PROXY_ADDRESS`
+3. `SimpleToken.deploy("Aula Token", "AULA")` → grava `TOKEN_ADDRESS`
+4. Executa `npm run generate-config` → atualiza `frontend/config.js`
+
+```bash
+npm run chain          # terminal 1 — nó Hardhat + sync PRIVATE_KEY (#0)
+npm run deploy:local   # terminal 2
+```
+
+Após **reiniciar** o nó Hardhat, endereços antigos deixam de existir — rode **`deploy:local` de novo** e recarregue o frontend.
 
 ## Frontend — recursos adicionais
 
 | Recurso | Descrição |
 | ------- | --------- |
-| **Pré-visualização da taxa** | Ao digitar o valor, exibe total enviado, taxa 5% e líquido ao destino. |
-| **`callStatic` antes de enviar** | Simula `transferEther` e exibe revert amigável via toast. |
+| **Seletor ETH / AULA** | Radio buttons no formulário: transferência nativa ou token ERC-20. |
+| **Saldo do token no header** | Chip **Token** com saldo AULA da carteira conectada (tooltip com cotação). |
+| **Pré-visualização da taxa** | Modo ETH: total enviado, taxa 5% e líquido. Modo AULA: total em tokens + equivalente ETH (cotação). |
+| **`callStatic` antes de enviar** | Simula `transferEther` ou `transfer` e exibe revert amigável via toast. |
 | **`chainChanged`** | Ao trocar rede na MetaMask, sincroniza estado e tenta reconectar. |
-| **Listener `OperationsStatusChanged`** | Banner e formulário reagem quando o owner suspende operações (UI ou CLI). |
-| **Logs / Minhas transferências** | Filtro por endereço destino e paginação (10 itens por página). |
-| **`TransferProxy` no formulário** | Botão *Transferir via proxy* — `msg.sender` é o proxy; histórico segue `tx.origin`. |
+| **Listener `OperationsStatusChanged`** | Banner e formulário reagem quando o owner suspende operações ETH (UI ou CLI). |
+| **Logs / Minhas transferências** | Filtro por endereço destino e paginação (10 itens por página) — fluxo **ETH**. |
+| **`TransferProxy` no formulário** | Botão *Transferir via proxy* — só modo ETH; oculto ao selecionar token. |
+| **Saldo destino** | Card do endereço destino exibe ETH e, se deployado, saldo AULA. |
 | **Badge de rede + health check** | Identifica Hardhat local / Sepolia; avisa se o contrato não existe na chain atual. |
 | **Toasts** | Notificações no canto da tela substituem `alert()` (confirms destrutivos permanecem). |
-| **Admin** | Acordeões para saque de taxas, ownership, `maxRecordsPerWallet` e demais ações. |
+| **Admin EtherTransfer** | Acordeões para saque de taxas, ownership, `maxRecordsPerWallet` e demais ações. |
+| **Admin SimpleToken** | Acordeão **SimpleToken (AULA)**: `mint`, `burnFrom`, `setEthRate` + painel supply/cotação. |
 
-Variáveis novas no `.env` / `generate-config`: `PROXY_ADDRESS`, `SEPOLIA_CHAIN_ID`, `LOCAL_RPC_URL`.
+Variáveis no `.env` / `generate-config`: `CONTRACT_ADDRESS`, `PROXY_ADDRESS`, **`TOKEN_ADDRESS`**, `SEPOLIA_CHAIN_ID`, `LOCAL_RPC_URL`, `BLOCK_EXPLORER_*`.
+
+### Aba Transferir — seletor de ativo
+
+| Modo | Contrato | Campo de valor | Botão principal | Proxy |
+| ---- | -------- | -------------- | --------------- | ----- |
+| **Ethereum (ETH)** | `EtherTransfer` | Valor (ETH) | Transferir | Visível |
+| **Token (AULA)** | `SimpleToken` | Valor (AULA) | Transferir | Oculto |
+
+Implementação em `frontend/app.js`: `getTransferAsset()`, `transferSubmit()` → `transferEther()` ou `transferToken()`.
+
+### Aba Admin — acordeão SimpleToken (AULA)
+
+Visível apenas se a carteira conectada for **`owner()`** do token (mesmo deployer, por padrão).
+
+| Campo / botão na UI | Função on-chain |
+| ------------------- | --------------- |
+| Painel status | `name`, `symbol`, `totalSupply`, `weiPerToken`, `owner` |
+| Distribuir tokens (mint) | `mint(to, amount)` |
+| Queimar tokens (burnFrom) | `burnFrom(from, amount)` |
+| Atualizar cotação | `setEthRate(parseEther(rateEth))` |
+
+Demais acordeões Admin (`setEnabled`, histórico, taxas, ownership, `maxRecordsPerWallet`, `clearAllTransfers`) operam sobre **`EtherTransfer`**.
+
+### Abas do frontend
+
+| Aba | Conteúdo |
+| --- | -------- |
+| **Transferir** | Formulário ETH ou AULA; pré-visualização; proxy (ETH) |
+| **Logs** | Eventos `TransferExecuted` (somente fluxo ETH) |
+| **Minhas transferências** | `getTransfersByOrigin` da carteira conectada (ETH) |
+| **Admin** | EtherTransfer + SimpleToken (owner) |
 
 ## Integração com a MetaMask (frontend)
 
@@ -254,7 +484,7 @@ O arquivo `frontend/app.js` centraliza a conexão com a carteira via [EIP-1193](
 | **Connect Wallet** | `eth_requestAccounts` — abre o popup da MetaMask se o site ainda não estiver autorizado. |
 | **Disconnect** | `wallet_revokePermissions` (`eth_accounts`) + limpeza do estado local (provider, signer, contrato, abas dependentes, formulário). |
 
-Após conectar com sucesso, a UI exibe endereço, chain ID, saldo da carteira, habilita o formulário de transferência e atualiza abas **Minhas transferências** e **Admin** (esta última só se `owner()` coincidir com a carteira conectada).
+Após conectar com sucesso, a UI exibe endereço, chain ID, saldos (**ETH**, **AULA** e taxas no contrato), habilita o formulário de transferência (modos ETH e AULA) e atualiza abas **Minhas transferências** e **Admin** (esta última só se `owner()` de **EtherTransfer** coincidir com a carteira conectada — na prática, o mesmo deployer também é owner do token).
 
 ### Restauração de sessão após refresh da página
 
@@ -280,7 +510,9 @@ Isso evita que a UI mostre o endereço antigo enquanto a MetaMask já usa outra 
 
 ### Botão **MAX** (valor da transferência)
 
-Ao lado do campo **Valor (ETH)**, o link **MAX** preenche o input com o **saldo máximo transferível**, reservando margem para **gas**:
+O comportamento depende do ativo selecionado:
+
+**Modo Ethereum (ETH)** — ao lado do campo **Valor (ETH)**, o link **MAX** preenche o input com o **saldo máximo transferível**, reservando margem para **gas**:
 
 1. **`contract.estimateGas.transferEther(to, { value, from })`** — simula a transação (usa o endereço destino se já preenchido; caso contrário, a própria carteira conectada).
 2. **`provider.getFeeData()`** — obtém o preço atual (`maxFeePerGas` em redes EIP-1559 ou `gasPrice` em redes legadas, ex.: Hardhat local).
@@ -293,6 +525,10 @@ Se o saldo não cobrir o gas estimado, a app alerta em vez de preencher um valor
 
 > **Nota:** a estimativa reflete rede e estado do contrato **no momento do clique**; o preço do gas pode mudar antes da confirmação na MetaMask.
 
+**Modo Token (AULA)** — o **MAX** preenche com o **saldo integral de tokens** da carteira (`balanceOf`). O gas da transação continua sendo pago em ETH; não há taxa percentual no contrato do token.
+
+Se o saldo AULA for zero, a app orienta a solicitar **`mint`** ao administrador.
+
 ### Fluxo geral da carteira
 
 | Ação do usuário | Comportamento da app |
@@ -301,7 +537,9 @@ Se o saldo não cobrir o gas estimado, a app alerta em vez de preencher um valor
 | Clica **Disconnect** | Revoga permissões do site + limpa estado |
 | Troca conta na MetaMask | Desconecta → pergunta → reconecta se aceitar |
 | Refresh da página (site já autorizado) | Restaura sessão silenciosamente via `eth_accounts` |
-| Clica **MAX** | Preenche valor máximo menos gas estimado |
+| Clica **MAX** (ETH) | Preenche valor máximo menos gas estimado |
+| Seleciona **Token (AULA)** | Formulário usa `SimpleToken.transfer`; proxy oculto |
+| Clica **MAX** (AULA) | Preenche saldo total de tokens da carteira |
 
 Listeners EIP-1193 são registrados em `initWalletProviderListeners()` (`accountsChanged` e, indiretamente, restauração via `ethereum#initialized`).
 
@@ -386,6 +624,8 @@ O ponto central: **`tx.origin` descreve quem assinou; `msg.sender` descreve quem
 | **Operação pública `transferEther`** | Qualquer carteira, se `enabled == true` |
 | **Funções administrativas** | Apenas **`owner`** (`msg.sender == owner`) via modifier **`onlyOwner`** |
 | **Pausa de operações** | Flag **`enabled`** + modifier **`onlyEnabled`** em `transferEther` |
+| **Transferência AULA** | `SimpleToken.transfer` — **`msg.sender`** é o titular; sem taxa no token |
+| **Supply AULA** | Zero no deploy; owner **`mint`** distribui |
 
 **Motivo didático e de produto:** a próxima aba do frontend listará **todas as transferências iniciadas pela carteira conectada**. Se no futuro um contrato intermediário (batch, meta-transação, etc.) chamar `EtherTransfer`:
 
@@ -398,19 +638,51 @@ O ponto central: **`tx.origin` descreve quem assinou; `msg.sender` descreve quem
 
 ## Comandos npm
 
-| Comando                     | Descrição                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `npm run chain`             | Sincroniza `PRIVATE_KEY` (#0) no `.env` e inicia o nó Hardhat local (`http://127.0.0.1:8545`, chain ID 31337). |
-| `npm run compile`           | Compila os contratos Solidity.                                                                               |
-| `npm run clean`             | Remove cache e artefatos de compilação do Hardhat.                                                           |
-| `npm run deploy:local`      | Faz deploy do contrato na rede local, atualiza `CONTRACT_ADDRESS` no `.env` e regenera `frontend/config.js`. |
-| `npm run deploy:sepolia`    | Faz deploy na testnet Sepolia (requer `SEPOLIA_RPC_URL` e `PRIVATE_KEY` no `.env`).                          |
-| `npm run generate-config`   | Lê o `.env` da raiz e gera `frontend/config.js` (`window.APP_CONFIG`) para o browser.                        |
-| `npm run frontend`          | Regenera a config e sobe o servidor estático do frontend na porta 3000.                                      |
-| `npm run frontend:dev`      | Regenera a config e sobe o frontend com recarregamento automático ao alterar arquivos ou o `.env`.           |
-| `npm run admin`               | CLI interativo para operações administrativas e **transferEther** fora do frontend (teste da aba Logs; local usa conta #0; `PRIVATE_KEY` opcional). |
+| Comando | Descrição |
+| ------- | --------- |
+| `npm run chain` | Sincroniza `PRIVATE_KEY` (#0) no `.env` e inicia o nó Hardhat local (`http://127.0.0.1:8545`, chain ID 31337). |
+| `npm run compile` | Compila os contratos Solidity (`EtherTransfer`, `TransferProxy`, `SimpleToken`). |
+| `npm run clean` | Remove cache e artefatos de compilação do Hardhat. |
+| `npm test` | Roda testes Hardhat: `EtherTransfer`, `TransferProxy` e `SimpleToken`. |
+| `npm run deploy:local` | Deploy na rede local dos **três** contratos; atualiza `CONTRACT_ADDRESS`, `PROXY_ADDRESS`, `TOKEN_ADDRESS` e regenera `frontend/config.js`. |
+| `npm run deploy:sepolia` | Faz deploy na testnet Sepolia (requer `SEPOLIA_RPC_URL` e `PRIVATE_KEY` no `.env`). |
+| `npm run generate-config` | Lê o `.env` da raiz e gera `frontend/config.js` (`window.APP_CONFIG`) para o browser. |
+| `npm run frontend` | Regenera a config e sobe o servidor estático do frontend na porta 3000. |
+| `npm run frontend:dev` | Regenera a config e sobe o frontend com recarregamento automático ao alterar arquivos ou o `.env`. |
+| `npm run admin` | CLI interativo: operações admin do **EtherTransfer** e do **SimpleToken**, incluindo **transferEther** fora do frontend (teste da aba Logs). |
 
-Deploy local grava `CONTRACT_ADDRESS` e `PROXY_ADDRESS` no `.env`.
+Deploy local grava `CONTRACT_ADDRESS`, `PROXY_ADDRESS` e **`TOKEN_ADDRESS`** no `.env`.
+
+## Testes automatizados (`npm test`)
+
+Suíte Hardhat + Chai em `test/`:
+
+### EtherTransfer (`test/EtherTransfer.test.js`)
+
+| Caso | O que valida |
+| ---- | ------------ |
+| Deploy | `owner`, `enabled`, `maxRecordsPerWallet` |
+| `transferEther` | Líquido 95%, taxa 5%, registro em `transfersByOrigin` |
+| Reverts | destino zero, valor zero |
+| Modifiers | `onlyEnabled`, `onlyOwner` |
+| Admin storage | `clear`, `prune`, FIFO, `withdrawAllFees`, `transferOwnership` |
+| `TransferProxy` | Histórico em **`tx.origin`**, não no proxy |
+
+### SimpleToken (`test/SimpleToken.test.js`)
+
+| Caso | O que valida |
+| ---- | ------------ |
+| Deploy | Supply **zero**, cotação inicial 0,001 ETH/token |
+| `mint` | Apenas owner; aumenta `totalSupply` e `balanceOf` |
+| `transfer` | Move saldo entre carteiras |
+| `burnFrom` | Reduz supply e saldo |
+| `setEthRate` | Atualiza `weiPerToken` e `ethValueOf` |
+
+```bash
+npm test
+```
+
+Total: **16 testes** (11 EtherTransfer/Proxy + 5 SimpleToken).
 
 ## Simular evento externo ao frontend (Hardhat console)
 
@@ -424,7 +696,7 @@ Use isto para emitir `TransferExecuted` **sem passar pelo app** — por exemplo,
 
 **Passos**
 
-Em outro terminal, na pasta `aula-2`:
+Em outro terminal, na pasta **`aula-3`**:
 
 ```bash
 npx hardhat console --network localhost
@@ -449,3 +721,98 @@ npm run admin
 ```
 
 Escolha **transferEther — tx fora do frontend (testar aba Logs)**. Por padrão usa a conta Hardhat #1 como destino e `0.05` ETH (ou `TRANSFER_AMOUNT_ETH` no `.env`, se definido). Equivalente ao fluxo acima, sem abrir o Hardhat console.
+
+## Setup rápido
+
+```bash
+cp .env.example .env
+npm install
+npm run chain          # outro terminal
+npm run deploy:local
+npm test
+npm run admin          # mint AULA para carteira de teste
+npm run frontend
+```
+
+1. Conecte a MetaMask na rede Hardhat local.
+2. Como **owner**, faça **mint** de tokens para a carteira conectada (Admin ou CLI).
+3. Na aba **Transferir**, teste **Ethereum (ETH)** e **Token (AULA)**.
+
+### Fluxo sugerido em sala de aula
+
+1. **Deploy** — `npm run deploy:local`; mostrar `totalSupply()` do token = 0.
+2. **Mint** — owner distribui 100 AULA para a conta #1 (MetaMask ou Hardhat).
+3. **Transferir token** — UI em modo AULA; enviar 10 AULA para outro endereço.
+4. **Transferir ETH** — modo Ethereum; `transferEther` com taxa 5%; conferir aba **Logs**.
+5. **Proxy** — modo ETH + *Transferir via proxy*; verificar **Minhas transferências** (histórico em `tx.origin`).
+6. **Cotação** — owner altera `setEthRate`; observar pré-visualização e tooltip do saldo AULA.
+7. **Burn** — owner usa `burnFrom` na Admin ou CLI; conferir `totalSupply` reduzido.
+8. **Testes** — `npm test` (16 casos).
+
+---
+
+## Variáveis de ambiente (`.env`)
+
+Copie o template: `cp .env.example .env`
+
+| Variável | Descrição |
+| -------- | --------- |
+| `PRIVATE_KEY` | Chave da conta deployer/admin; sincronizada por `npm run chain` (#0) |
+| `LOCAL_RPC_URL` | RPC local (padrão `http://127.0.0.1:8545`) |
+| `SEPOLIA_RPC_URL` | RPC Sepolia (deploy/testnet) |
+| `CONTRACT_ADDRESS` | `EtherTransfer` — preenchido por `deploy:local` |
+| `PROXY_ADDRESS` | `TransferProxy` — preenchido por `deploy:local` |
+| `TOKEN_ADDRESS` | `SimpleToken` — preenchido por `deploy:local` |
+| `HARDHAT_LOCAL_CHAIN_ID` | Chain ID do nó local (31337) |
+| `SEPOLIA_CHAIN_ID` | Chain ID Sepolia (11155111) |
+| `BLOCK_EXPLORER_ORIGIN` | Origem do explorer (links de tx/endereço) |
+| `BLOCK_EXPLORER_TX_PATH` | Path da tx, ex.: `/tx/{txHash}` |
+| `BLOCK_EXPLORER_ADDRESS_PATH` | Path de endereço, ex.: `/address/{address}` |
+
+O script `scripts/generate-frontend-config.js` lê o `.env` e gera `frontend/config.js` (`window.APP_CONFIG`). Rode após cada deploy: `npm run generate-config` (automático em `deploy:local` e `frontend`).
+
+---
+
+## Estrutura do repositório
+
+```
+aula-3/
+├── contracts/
+│   ├── EtherTransfer.sol      # ETH + taxa 5% + admin + histórico
+│   ├── TransferProxy.sol      # proxy → transferEther
+│   └── SimpleToken.sol        # token AULA (ERC-20 didático)
+├── scripts/
+│   ├── deploy.js              # deploy dos 3 contratos + generate-config
+│   ├── admin-cli.js           # menu admin ETH + token + transfer externo
+│   ├── chain.js               # sobe nó + sync PRIVATE_KEY
+│   ├── generate-frontend-config.js
+│   └── lib/                   # env-wallet, env-file, hardhat-local-accounts
+├── frontend/
+│   ├── app.js                 # MetaMask, ETH/AULA, Admin, logs
+│   ├── index.html
+│   ├── styles.css
+│   ├── config.js              # gerado — não editar manualmente
+│   └── vendor/ethers.umd.min.js
+├── test/
+│   ├── EtherTransfer.test.js
+│   └── SimpleToken.test.js
+├── hardhat.config.js
+├── package.json
+├── .env.example
+└── README.md
+```
+
+---
+
+## Diferenças em relação à aula-2
+
+| Aspecto | aula-2 | aula-3 (este repo) |
+| ------- | ------ | ------------------ |
+| Contratos | EtherTransfer + TransferProxy | + **SimpleToken** |
+| Deploy | 2 contratos | **3 contratos** + `TOKEN_ADDRESS` |
+| Frontend — transferência | Só ETH | **ETH ou AULA** |
+| Header | Contrato + Carteira | + chip **Token** |
+| Admin UI | Só EtherTransfer | + acordeão **SimpleToken** |
+| `npm run admin` | Só ETH | ETH + **mint / burn / cotação** |
+| Testes | EtherTransfer + Proxy | + **SimpleToken** |
+| Supply AULA | — | **Zero** até `mint` |

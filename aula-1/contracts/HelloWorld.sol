@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 contract HelloWorld {
     uint storedData;
+    string lastStringValue;
 
     function getMessage() public pure returns (string memory) {
         return unicode"Hello from Blockchain 🚀";

@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transferências ETH &amp; Token</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="wallet-bar">
+        <button type="button" id="btn-connect" class="btn-connect">Connect Wallet</button>
+        <div id="wallet" class="wallet-status" aria-live="polite"></div>
+      </header>
+
+      <main class="card">
+        <header class="card-header">
+          <div class="card-header-main">
+            <h1>💸 Transferências ETH &amp; Token</h1>
+            <p class="hint">
+              <span id="network-badge" class="network-badge network-badge--unknown">Rede: —</span>
+              · MetaMask · ethers.js v5
+            </p>
+          </div>
+          <div class="balances-header" aria-live="polite">
+            <div class="balance-chip">
+              <span class="balance-label">Contrato</span>
+              <span class="balance-value-wrap">
+                <span id="contract-balance-value" class="balance-value">—</span>
+                <span
+                  id="contract-balance-tooltip"
+                  class="balance-tooltip"
+                  role="tooltip"
+                  hidden
+                ></span>
+              </span>
+              <button
+                type="button"
+                class="btn-refresh-mini"
+                id="btn-refresh-contract-balance"
+                title="Atualizar saldo do contrato"
+                aria-label="Atualizar saldo do contrato"
+              >
+                ↻
+              </button>
+            </div>
+            <div class="balance-chip">
+              <span class="balance-label">Token</span>
+              <span class="balance-value-wrap">
+                <span id="token-balance-value" class="balance-value">—</span>
+                <span
+                  id="token-balance-tooltip"
+                  class="balance-tooltip"
+                  role="tooltip"
+                  hidden
+                ></span>
+              </span>
+              <button
+                type="button"
+                class="btn-refresh-mini"
+                id="btn-refresh-token-balance"
+                title="Atualizar saldo do token"
+                aria-label="Atualizar saldo do token"
+              >
+                ↻
+              </button>
+            </div>
+            <div class="balance-chip">
+              <span class="balance-label">Carteira</span>
+              <span class="balance-value-wrap">
+                <span id="wallet-balance-value" class="balance-value">—</span>
+                <span
+                  id="wallet-balance-tooltip"
+                  class="balance-tooltip"
+                  role="tooltip"
+                  hidden
+                ></span>
+              </span>
+              <button
+                type="button"
+                class="btn-refresh-mini"
+                id="btn-refresh-wallet-balance"
+                title="Atualizar saldo da carteira"
+                aria-label="Atualizar saldo da carteira"
+              >
+                ↻
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section id="section-site-network" class="actions" hidden>
+          <p class="actions-label">
+            Fluxo alternativo: o site chama <code>wallet_switchEthereumChain</code> (EIP-3326) e, se
+            a rede não existir, <code>wallet_addEthereumChain</code> (EIP-3085).
+          </p>
+          <button type="button" class="btn-secondary" id="btn-add-network">
+            Adicionar ou mudar para Hardhat local
+          </button>
+          <p id="network-status" class="output" aria-live="polite"></p>
+        </section>
+
+        <div class="tabs-shell" data-active="transfer">
+          <div id="operations-suspended-banner" class="operations-banner" hidden role="status">
+            Operações públicas suspensas (<code>enabled == false</code>). Apenas o owner pode reativar
+            na aba Admin.
+          </div>
+          <div id="health-banner" class="health-banner" hidden role="status"></div>
+          <nav class="tabs" role="tablist" aria-label="Seções do contrato">
+            <button
+              type="button"
+              class="tab"
+              role="tab"
+              id="tab-transfer"
+              aria-selected="true"
+              aria-controls="panel-transfer"
+            >
+              Transferir
+            </button>
+            <button
+              type="button"
+              class="tab"
+              role="tab"
+              id="tab-logs"
+              aria-selected="false"
+              aria-controls="panel-logs"
+              tabindex="-1"
+            >
+              Logs
+            </button>
+            <button
+              type="button"
+              class="tab tab--disabled"
+              role="tab"
+              id="tab-mine"
+              aria-selected="false"
+              aria-controls="panel-mine"
+              aria-disabled="true"
+              tabindex="-1"
+              disabled
+            >
+              Minhas Transferências
+            </button>
+            <button
+              type="button"
+              class="tab tab--disabled"
+              role="tab"
+              id="tab-admin"
+              aria-selected="false"
+              aria-controls="panel-admin"
+              aria-disabled="true"
+              tabindex="-1"
+              disabled
+              hidden
+            >
+              Admin
+            </button>
+          </nav>
+
+          <div class="tab-panels">
+            <section
+              id="panel-transfer"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-transfer"
+            >
+              <form id="transfer-form">
+                <div class="form-section">
+                  <span class="field-label">Ativo da transferência</span>
+                  <div class="transfer-asset-toggle" role="radiogroup" aria-label="Ativo da transferência">
+                    <label class="transfer-asset-option">
+                      <input
+                        type="radio"
+                        name="transfer-asset"
+                        id="transfer-asset-eth"
+                        value="eth"
+                        checked
+                        disabled
+                      />
+                      <span>Ethereum (ETH)</span>
+                    </label>
+                    <div class="transfer-asset-token-group">
+                      <label class="transfer-asset-option">
+                        <input
+                          type="radio"
+                          name="transfer-asset"
+                          id="transfer-asset-token"
+                          value="token"
+                          disabled
+                        />
+                        <span id="transfer-asset-token-label">Token (AULA)</span>
+                      </label>
+                      <button
+                        type="button"
+                        id="btn-watch-token"
+                        class="btn-watch-token"
+                        disabled
+                        title="Adicionar AULA ao MetaMask (wallet_watchAsset, EIP-747)"
+                      >
+                        <img
+                          src="assets/metamask-icon.svg"
+                          alt=""
+                          class="btn-watch-token__icon"
+                          width="14"
+                          height="13"
+                          decoding="async"
+                        />
+                        <span>+ MetaMask</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p id="token-rate-hint" class="panel-hint" hidden>
+                    Cotação de referência: <span id="token-rate-display">—</span>
+                  </p>
+                </div>
+
+                <div class="form-section">
+                  <label class="field-label" for="input-to-address">Endereço destino</label>
+                  <div class="field-input-row">
+                    <input
+                      id="input-to-address"
+                      class="field-input"
+                      type="text"
+                      placeholder="0x..."
+                      disabled
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="btn-refresh-mini field-input-row__refresh"
+                      id="btn-refresh-destination-balance"
+                      title="Atualizar saldo do destino"
+                      aria-label="Atualizar saldo do destino"
+                      disabled
+                    >
+                      <svg
+                        class="icon"
+                        viewBox="0 0 24 24"
+                        width="16"
+                        height="16"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fill="currentColor"
+                          d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08a5.99 5.99 0 0 1-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    id="address-balance-output"
+                    class="address-balance-output"
+                    aria-live="polite"
+                  ></div>
+                </div>
+
+                <div class="form-section">
+                  <label class="field-label" for="input-amount-eth" id="transfer-amount-label">Valor (ETH)</label>
+                  <div class="field-input-with-action">
+                    <input
+                      id="input-amount-eth"
+                      class="field-input"
+                      type="number"
+                      min="0"
+                      step="0.000000000000000001"
+                      placeholder="Ex.: 0.01"
+                      disabled
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="field-max-link"
+                      id="btn-transfer-amount-max"
+                      title="Preencher com o saldo máximo descontando o gas estimado"
+                      disabled
+                    >
+                      MAX
+                    </button>
+                  </div>
+                  <div
+                    id="transfer-preview"
+                    class="transfer-preview"
+                    aria-live="polite"
+                    hidden
+                  ></div>
+                </div>
+
+                <div class="form-section form-section--proxy" id="transfer-proxy-section">
+                  <p class="panel-hint">
+                    Demonstração <code>msg.sender</code> vs <code>tx.origin</code>: o proxy chama
+                    <code>transferEther</code> como contrato intermediário (<code>msg.sender</code> =
+                    proxy), mas o histórico on-chain usa <code>tx.origin</code> — sua carteira
+                    continua em Minhas transferências.
+                  </p>
+                  <button type="button" class="btn-secondary" id="btn-transfer-via-proxy" disabled>
+                    Transferir via proxy
+                  </button>
+                </div>
+
+                <button type="submit" id="btn-transfer" disabled>Transferir</button>
+              </form>
+              <div id="transfer-output" class="output" aria-live="polite"></div>
+            </section>
+
+            <section
+              id="panel-logs"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-logs"
+              hidden
+            >
+              <p class="panel-hint">
+                Eventos <code>TransferExecuted</code> do contrato — histórico on-chain e novos em
+                tempo real (nó Hardhat em <code>127.0.0.1:8545</code>, com ou sem carteira
+                conectada).
+              </p>
+              <div class="list-toolbar">
+                <label class="field-label" for="logs-filter-address">Filtrar por destino</label>
+                <input
+                  id="logs-filter-address"
+                  class="field-input"
+                  type="text"
+                  placeholder="0x... (opcional)"
+                />
+                <div class="list-toolbar__actions">
+                  <button type="button" class="btn-secondary" id="btn-refresh-logs">
+                    Atualizar logs
+                  </button>
+                  <div class="list-pagination" aria-label="Paginação dos logs">
+                    <button
+                      type="button"
+                      class="btn-refresh-mini list-pagination__btn"
+                      id="btn-logs-prev"
+                      title="Página anterior"
+                      aria-label="Página anterior"
+                      disabled
+                    >
+                      <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"
+                        />
+                      </svg>
+                    </button>
+                    <span id="logs-page-info" class="list-page-info">—</span>
+                    <button
+                      type="button"
+                      class="btn-refresh-mini list-pagination__btn"
+                      id="btn-logs-next"
+                      title="Próxima página"
+                      aria-label="Próxima página"
+                      disabled
+                    >
+                      <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p id="logs-status" class="output" aria-live="polite"></p>
+              <p id="logs-empty" class="logs-empty">Nenhum evento encontrado ainda.</p>
+              <ul id="logs-list" class="logs-list" aria-live="polite"></ul>
+            </section>
+
+            <section
+              id="panel-mine"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-mine"
+              hidden
+            >
+              <p class="panel-hint">
+                Histórico on-chain em <code>transfersByOrigin</code> para a carteira conectada
+                (indexado por <code>tx.origin</code>). Dados gravados no contrato — sem hash de tx
+                no storage.
+              </p>
+              <div class="list-toolbar">
+                <label class="field-label" for="mine-filter-address">Filtrar por destino</label>
+                <input
+                  id="mine-filter-address"
+                  class="field-input"
+                  type="text"
+                  placeholder="0x... (opcional)"
+                />
+                <div class="list-toolbar__actions">
+                  <button type="button" class="btn-secondary" id="btn-refresh-mine">
+                    Atualizar minhas transferências
+                  </button>
+                  <div class="list-pagination" aria-label="Paginação das transferências">
+                    <button
+                      type="button"
+                      class="btn-refresh-mini list-pagination__btn"
+                      id="btn-mine-prev"
+                      title="Página anterior"
+                      aria-label="Página anterior"
+                      disabled
+                    >
+                      <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"
+                        />
+                      </svg>
+                    </button>
+                    <span id="mine-page-info" class="list-page-info">—</span>
+                    <button
+                      type="button"
+                      class="btn-refresh-mini list-pagination__btn"
+                      id="btn-mine-next"
+                      title="Próxima página"
+                      aria-label="Próxima página"
+                      disabled
+                    >
+                      <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p id="mine-status" class="output" aria-live="polite"></p>
+              <p id="mine-empty" class="logs-empty">Nenhuma transferência registrada para esta carteira.</p>
+              <ul id="mine-list" class="logs-list" aria-live="polite"></ul>
+            </section>
+
+            <section
+              id="panel-admin"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-admin"
+              hidden
+            >
+              <div id="admin-panel-content" hidden>
+              <header class="admin-panel-header">
+                <h2 class="admin-panel-header__title">Administração (onlyOwner)</h2>
+                <p class="panel-hint admin-panel-header__hint">
+                  Cada contrato tem owner e funções admin próprias. Selecione o contrato abaixo.
+                </p>
+              </header>
+
+              <div class="admin-contract-tabs-shell" data-admin-active="ether">
+                <nav class="admin-contract-tabs" role="tablist" aria-label="Contratos administráveis">
+                  <button
+                    type="button"
+                    class="admin-contract-tab"
+                    role="tab"
+                    id="admin-tab-ether"
+                    aria-selected="true"
+                    aria-controls="admin-panel-ether"
+                    tabindex="0"
+                  >
+                    EtherTransfer
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-contract-tab"
+                    role="tab"
+                    id="admin-tab-token"
+                    aria-selected="false"
+                    aria-controls="admin-panel-token"
+                    tabindex="-1"
+                  >
+                    SimpleToken (AULA)
+                  </button>
+                </nav>
+
+                <div class="admin-contract-panels">
+                  <section
+                    id="admin-panel-ether"
+                    class="admin-contract-panel"
+                    role="tabpanel"
+                    aria-labelledby="admin-tab-ether"
+                  >
+                    <div id="admin-eth-status" class="admin-status" aria-live="polite"></div>
+
+                    <div class="admin-accordion" id="admin-accordion-ether">
+                <details class="admin-accordion__item" id="admin-acc-enabled">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">transferEther — operações públicas</span>
+                    <span class="admin-accordion__meta" id="admin-enabled-summary">—</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      Liga ou suspende chamadas a <code>transferEther</code> para todos os usuários.
+                    </p>
+                    <label class="toggle-row" for="admin-enabled-toggle">
+                      <span class="toggle-row__label">Operações públicas</span>
+                      <span class="toggle-row__state" id="admin-enabled-label" aria-live="polite">—</span>
+                      <input
+                        type="checkbox"
+                        id="admin-enabled-toggle"
+                        class="toggle-input"
+                        role="switch"
+                        aria-checked="false"
+                        disabled
+                      />
+                      <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                </details>
+
+                <details class="admin-accordion__item" id="admin-acc-wallet-actions">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">Histórico por carteira</span>
+                    <span class="admin-accordion__meta" id="admin-selected-summary">Nenhuma</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      Carteiras com histórico em <code>transfersByOrigin</code>. Selecione uma para
+                      limpar ou podar registros.
+                    </p>
+                    <div class="field-input-row">
+                      <select
+                        id="admin-wallet-select"
+                        class="field-input admin-wallet-select"
+                        disabled
+                      >
+                        <option value="">— Selecione uma carteira —</option>
+                      </select>
+                      <button
+                        type="button"
+                        class="btn-refresh-mini field-input-row__refresh"
+                        id="btn-admin-refresh-wallets"
+                        title="Atualizar lista de carteiras"
+                        aria-label="Atualizar lista de carteiras"
+                      >
+                        <svg
+                          class="icon"
+                          viewBox="0 0 24 24"
+                          width="16"
+                          height="16"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08a5.99 5.99 0 0 1-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <p id="admin-wallets-status" class="output admin-wallets-status" aria-live="polite"></p>
+                    <p id="admin-wallets-empty" class="logs-empty">Nenhuma carteira registrada.</p>
+
+                    <div class="admin-wallet-actions-divider" aria-hidden="true"></div>
+
+                    <div class="admin-actions-grid">
+                      <div class="admin-action-card">
+                        <h3 class="admin-action-card__title">Limpar histórico</h3>
+                        <p class="admin-action-card__hint">
+                          Apaga todos os registros on-chain da carteira selecionada.
+                        </p>
+                        <button
+                          type="button"
+                          class="btn-secondary admin-action-btn"
+                          id="btn-admin-clear"
+                          disabled
+                        >
+                          clearTransfersByOrigin
+                        </button>
+                      </div>
+                      <div class="admin-action-card">
+                        <h3 class="admin-action-card__title">Manter últimos N</h3>
+                        <p class="admin-action-card__hint">
+                          Conserva apenas os registros mais recentes; remove os antigos.
+                        </p>
+                        <label class="field-label" for="admin-prune-keep">N &gt; 0</label>
+                        <input
+                          id="admin-prune-keep"
+                          class="field-input"
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="10"
+                        />
+                        <button
+                          type="button"
+                          class="btn-secondary admin-action-btn"
+                          id="btn-admin-prune"
+                          disabled
+                        >
+                          pruneTransfersByOrigin
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="admin-accordion__item" id="admin-acc-fees">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">Saque de taxas acumuladas</span>
+                    <span class="admin-accordion__meta" id="admin-fees-summary">—</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      As taxas de 5% permanecem no saldo do contrato até o owner sacar via
+                      <code>withdrawFees</code> ou <code>withdrawAllFees</code>.
+                    </p>
+                    <label class="field-label" for="admin-withdraw-to">Destino do saque</label>
+                    <input
+                      id="admin-withdraw-to"
+                      class="field-input"
+                      type="text"
+                      placeholder="0x... (padrão: carteira conectada)"
+                    />
+                    <label class="field-label" for="admin-withdraw-amount">Valor (ETH, opcional)</label>
+                    <input
+                      id="admin-withdraw-amount"
+                      class="field-input"
+                      type="number"
+                      min="0"
+                      step="0.000000000000000001"
+                      placeholder="Vazio = sacar tudo"
+                    />
+                    <div class="admin-actions-grid">
+                      <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-withdraw">
+                        withdrawFees
+                      </button>
+                      <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-withdraw-all">
+                        withdrawAllFees
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="admin-accordion__item" id="admin-acc-ownership">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">Ownership do contrato</span>
+                    <span class="admin-accordion__meta" id="admin-owner-summary">—</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      Transfira o papel de owner ou renuncie (irreversível até novo deploy).
+                    </p>
+                    <label class="field-label" for="admin-new-owner">Novo owner</label>
+                    <input
+                      id="admin-new-owner"
+                      class="field-input"
+                      type="text"
+                      placeholder="0x..."
+                    />
+                    <div class="admin-actions-grid">
+                      <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-transfer-owner">
+                        transferOwnership
+                      </button>
+                      <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-renounce-owner">
+                        renounceOwnership
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="admin-accordion__item" id="admin-acc-max-records">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">Limite de histórico por carteira</span>
+                    <span class="admin-accordion__meta" id="admin-max-records-summary">—</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      FIFO on-chain: registros mais antigos são removidos quando o limite é
+                      ultrapassado.
+                    </p>
+                    <label class="field-label" for="admin-max-records">maxRecordsPerWallet</label>
+                    <input
+                      id="admin-max-records"
+                      class="field-input"
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="50"
+                    />
+                    <button
+                      type="button"
+                      class="btn-secondary admin-action-btn"
+                      id="btn-admin-set-max-records"
+                    >
+                      setMaxRecordsPerWallet
+                    </button>
+                  </div>
+                </details>
+
+                <details class="admin-accordion__item admin-accordion__item--danger" id="admin-acc-clear-all">
+                  <summary class="admin-accordion__summary">
+                    <span class="admin-accordion__title">clearAllTransfers</span>
+                    <span class="admin-accordion__meta">Zona de risco</span>
+                  </summary>
+                  <div class="admin-accordion__body">
+                    <p class="admin-accordion__hint">
+                      Remove o histórico on-chain de <strong>todas</strong> as carteiras registradas.
+                    </p>
+                    <button
+                      type="button"
+                      class="btn-secondary admin-action-btn"
+                      id="btn-admin-clear-all"
+                    >
+                      clearAllTransfers
+                    </button>
+                  </div>
+                </details>
+                    </div>
+                  </section>
+
+                  <section
+                    id="admin-panel-token"
+                    class="admin-contract-panel"
+                    role="tabpanel"
+                    aria-labelledby="admin-tab-token"
+                    hidden
+                  >
+                    <div id="admin-token-unavailable" class="logs-empty" hidden>
+                      Token não disponível nesta rede. Rode <code>npm run deploy:local</code>.
+                    </div>
+
+                    <div id="admin-token-panel-body">
+                      <dl id="admin-token-status" class="admin-token-status admin-status"></dl>
+
+                      <div class="admin-actions-grid admin-token-actions">
+                        <div class="admin-action-card">
+                          <h3 class="admin-action-card__title">mint</h3>
+                          <p class="admin-action-card__hint">
+                            Distribui tokens para uma carteira (supply inicial zero após deploy).
+                          </p>
+                          <label class="field-label" for="admin-token-mint-to">Carteira destino</label>
+                          <input
+                            id="admin-token-mint-to"
+                            class="field-input"
+                            type="text"
+                            placeholder="0x..."
+                          />
+                          <label class="field-label" for="admin-token-mint-amount">Quantidade</label>
+                          <input
+                            id="admin-token-mint-amount"
+                            class="field-input"
+                            type="number"
+                            min="0"
+                            step="0.000000000000000001"
+                            placeholder="Ex.: 100"
+                          />
+                          <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-token-mint">
+                            Distribuir tokens
+                          </button>
+                        </div>
+
+                        <div class="admin-action-card">
+                          <h3 class="admin-action-card__title">burnFrom</h3>
+                          <p class="admin-action-card__hint">
+                            Queima tokens de uma carteira e reduz o <code>totalSupply</code>.
+                          </p>
+                          <label class="field-label" for="admin-token-burn-from">Carteira</label>
+                          <input
+                            id="admin-token-burn-from"
+                            class="field-input"
+                            type="text"
+                            placeholder="0x..."
+                          />
+                          <label class="field-label" for="admin-token-burn-amount">Quantidade</label>
+                          <input
+                            id="admin-token-burn-amount"
+                            class="field-input"
+                            type="number"
+                            min="0"
+                            step="0.000000000000000001"
+                            placeholder="Ex.: 10"
+                          />
+                          <button type="button" class="btn-secondary admin-action-btn" id="btn-admin-token-burn">
+                            Queimar tokens
+                          </button>
+                        </div>
+
+                        <div class="admin-action-card">
+                          <h3 class="admin-action-card__title">setEthRate</h3>
+                          <p class="admin-action-card__hint">
+                            Cotação de referência: quantos ETH equivalem a 1 token inteiro.
+                          </p>
+                          <label class="field-label" for="admin-token-rate-eth">1 token em ETH</label>
+                          <input
+                            id="admin-token-rate-eth"
+                            class="field-input"
+                            type="number"
+                            min="0"
+                            step="0.000000000000000001"
+                            placeholder="Ex.: 0.001"
+                          />
+                          <button
+                            type="button"
+                            class="btn-secondary admin-action-btn"
+                            id="btn-admin-token-set-rate"
+                          >
+                            Atualizar cotação
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <p id="admin-output" class="output admin-accordion-output" aria-live="polite"></p>
+              </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <span class="app-footer__label">Contrato</span>
+        <a
+          id="footer-contract-link"
+          class="app-footer__link"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+        ></a>
+      </footer>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Local (mesma origem): evita CDN bloqueada e global `ethers` faltar com SES/MetaMask -->
+    <script src="config.js"></script>
+    <script src="vendor/ethers.umd.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+/* Gerado a partir de aula-3/.env — não edite; use npm run generate-config */
+window.APP_CONFIG = {
+  "CONTRACT_ADDRESS": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "PROXY_ADDRESS": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "TOKEN_ADDRESS": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "BLOCK_EXPLORER_ORIGIN": "http://localhost:3002",
+  "BLOCK_EXPLORER_TX_PATH": "/tx/{txHash}",
+  "BLOCK_EXPLORER_ADDRESS_PATH": "/address/{address}",
+  "BLOCK_EXPLORER_TX_URL": "",
+  "HARDHAT_LOCAL_CHAIN_ID": 31337,
+  "SEPOLIA_CHAIN_ID": 11155111,
+  "LOCAL_RPC_URL": "http://127.0.0.1:8545"
+};
